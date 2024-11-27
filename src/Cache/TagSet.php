@@ -48,43 +48,6 @@ class TagSet extends BaseTagSet
     }
 
     /**
-     * Get all possible namespaces for the tagset being used
-     */
-    public function getNamespaces(): array
-    {
-        $result = $this->tagIds();
-
-        //Build all possible permutations to scan.
-        foreach ($this->getPermutations($result) as $permutation) {
-            $result[] = implode("", $permutation);
-        }
-
-        return array_unique($result);
-    }
-
-    /**
-     * Build a tag permutation generator.
-     *
-     * Builds 5 tag permutations in ~0.06ms.
-     */
-    private function getPermutations(array $elements): Generator
-    {
-        if (count($elements) <= 1) {
-            yield $elements;
-        } else {
-            foreach ($this->getPermutations(array_slice($elements, 1)) as $permutation) {
-                foreach (range(0, count($elements) - 1) as $i) {
-                    yield array_merge(
-                        array_slice($permutation, 0, $i),
-                        [$elements[0]],
-                        array_slice($permutation, $i)
-                    );
-                }
-            }
-        }
-    }
-
-    /**
      * {@inheritDoc}
      */
     public function entries()
@@ -127,4 +90,41 @@ class TagSet extends BaseTagSet
 
         return $result;
     }
+
+    #region Helpers
+    /**
+     * Get all possible namespaces for the tagset being used
+     */
+    protected function getNamespaces(): array
+    {
+        $result = $this->tagIds();
+
+        //Build all possible permutations to scan.
+        foreach ($this->getPermutations($result) as $permutation) {
+            $result[] = implode("", $permutation);
+        }
+
+        return array_unique($result);
+    }
+
+    /**
+     * Builds a tag permutation generator.
+     */
+    private function getPermutations(array $elements): Generator
+    {
+        if (count($elements) <= 1) {
+            yield $elements;
+        } else {
+            foreach ($this->getPermutations(array_slice($elements, 1)) as $permutation) {
+                foreach (range(0, count($elements) - 1) as $i) {
+                    yield array_merge(
+                        array_slice($permutation, 0, $i),
+                        [$elements[0]],
+                        array_slice($permutation, $i)
+                    );
+                }
+            }
+        }
+    }
+    #endregion
 }

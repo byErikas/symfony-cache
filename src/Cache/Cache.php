@@ -8,11 +8,8 @@ use Illuminate\Cache\Events\KeyWriteFailed;
 use Illuminate\Cache\Events\KeyWritten;
 use Illuminate\Cache\Events\RetrievingKey;
 use Illuminate\Cache\Events\WritingKey;
-use Symfony\Contracts\Cache\ItemInterface;
 use Illuminate\Support\InteractsWithTime;
 use Illuminate\Cache\RedisTaggedCache as BaseTaggedCache;
-use Illuminate\Support\Carbon;
-use function Illuminate\Support\defer;
 
 class Cache extends BaseTaggedCache
 {
@@ -20,6 +17,7 @@ class Cache extends BaseTaggedCache
 
     public const DEFAULT_CACHE_TTL = 8640000;
 
+    protected const RESERVED_CHARACTERS = '{}()/\@:';
     protected const RESERVED_CHARACTERS_MAP = [
         ":"     => ".",
         "@"     => "\1",
@@ -132,60 +130,6 @@ class Cache extends BaseTaggedCache
         return $this->putCache($key, $value, $ttl);
     }
 
-    /**
-     * Retrieve an item from the cache by key, refreshing it in the background if it is stale.
-     *
-     * @template TCacheValue
-     *
-     * @param  string  $key
-     * @param  array{ 0: \DateTimeInterface|\DateInterval|int, 1: \DateTimeInterface|\DateInterval|int }  $ttl
-     * @param  (callable(): TCacheValue)  $callback
-     * @param  array{ seconds?: int, owner?: string }|null  $lock
-     * @return TCacheValue
-     */
-    public function flexible($key, $ttl, $callback, $lock = null)
-    {
-        $key = self::cleanKey($key);
-
-        [
-            $key => $value,
-            "illuminate.cache.flexible.created.{$key}" => $created,
-        ] = $this->many([$key, "illuminate.cache.flexible.created.{$key}"]);
-
-        if (in_array(null, [$value, $created], true)) {
-            return tap(value($callback), fn($value) => $this->putMany([
-                $key => $value,
-                "illuminate.cache.flexible.created.{$key}" => Carbon::now()->getTimestamp(),
-            ], $ttl[1]));
-        }
-
-        if (($created + $this->getSeconds($ttl[0])) > Carbon::now()->getTimestamp()) {
-            return $value;
-        }
-
-        $refresh = function () use ($key, $ttl, $callback, $lock, $created) {
-            /** @disregard P1013 */
-            $this->store->lock(
-                "illuminate.cache.flexible.lock.{$key}",
-                $lock['seconds'] ?? 0,
-                $lock['owner'] ?? null,
-            )->get(function () use ($key, $callback, $created, $ttl) {
-                if ($created !== $this->get("illuminate.cache.flexible.created.{$key}")) {
-                    return;
-                }
-
-                $this->putMany([
-                    $key => value($callback),
-                    "illuminate.cache.flexible.created.{$key}" => Carbon::now()->getTimestamp(),
-                ], $ttl[1]);
-            });
-        };
-
-        defer($refresh, "illuminate.cache.flexible.{$key}");
-
-        return $value;
-    }
-
     #region Helpers
 
     /**
@@ -202,7 +146,7 @@ class Cache extends BaseTaggedCache
      */
     public static function cleanKey(?string $key): string
     {
-        return str_replace(str_split(ItemInterface::RESERVED_CHARACTERS), Cache::RESERVED_CHARACTERS_MAP, $key);
+        return str_replace(str_split(Cache::RESERVED_CHARACTERS), Cache::RESERVED_CHARACTERS_MAP, $key);
     }
 
     #endregion
